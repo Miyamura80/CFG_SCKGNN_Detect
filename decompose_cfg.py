@@ -101,4 +101,5 @@ if __name__ == "__main__":
     vuln_list = ["delegatecall", "integeroverflow", "reentrancy", "timestamp"]
     for vuln in vuln_list:
         write_nodes_and_edges(vuln)
-        # clean_nodes(vuln)
+        clean_nodes(vuln)
+        clean_nodes_2(vuln)
