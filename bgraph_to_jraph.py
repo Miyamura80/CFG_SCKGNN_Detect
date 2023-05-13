@@ -11,7 +11,6 @@ import jax.numpy as jnp
 from typing import List, Tuple
 import time 
 
-OPENAI_API_KEY = "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"
 
 
 openai.api_key = OPENAI_API_KEY
@@ -95,8 +94,6 @@ def encoder(code: str) -> np.ndarray:
     # return np.ones((FEATURE_NUM,))
 
 def make_jraph_dataset(vuln):
-    export_dir = f"./dataset/{vuln}"
-
     x_dict_list = get_x_dict(vuln)
     adj_dict_list = get_adj_dict(vuln)
     print(len(x_dict_list), len(adj_dict_list))
@@ -113,9 +110,6 @@ def make_jraph_dataset(vuln):
         
         # Define final dataset
         n = len(x_dict)
-        x = np.zeros((n, FEATURE_NUM))
-        adj = np.zeros((n,n))
-        edge_feat = np.zeros((n,n, EDGE_FEATURE_NUM))
 
         blk_id_to_index = {blk_id: i for i, (blk_id, _) in enumerate(x_dict.items())}
         nodes = []
@@ -155,6 +149,56 @@ def make_jraph_dataset(vuln):
     with open(f"./dataset/{vuln}.pkl", "wb") as f:
         pickle.dump(dataset, f)
 
+
+def re_pack_dataset(vuln, numbers):
+    x_dict_list = get_x_dict(vuln)
+    adj_dict_list = get_adj_dict(vuln)
+    print(len(x_dict_list), len(adj_dict_list))
+    graph_list = list(zip(x_dict_list, adj_dict_list))
+    print(len(graph_list))
+    dataset = []
+    print("Total # of graphs", len(graph_list))
+    for index in numbers:
+        (x_dict, adj_dict) = graph_list[index]
+        print(f"Processing graph {index}")
+
+        # Sanity check
+        for key in adj_dict.keys():
+            if key not in x_dict.keys():
+                raise Exception(f"Key {key} not in x_dict")
+        
+        blk_id_to_index = {blk_id: i for i, (blk_id, _) in enumerate(x_dict.items())}
+        nodes = []
+        edges = []
+        senders = []
+        receivers = []
+
+        # Convert dicts to jraph representation
+        for i, (blk,code) in enumerate(x_dict.items()):
+            nodes.append(encoder(code))
+            if blk in adj_dict:
+                for (dest, edge_type) in adj_dict[blk]:
+                    edge_one_hot = np.zeros((EDGE_FEATURE_NUM,))
+                    edge_one_hot[edge_type] = 1
+                    edges.append(edge_one_hot)
+                    senders.append(blk_id_to_index[blk])
+                    receivers.append(blk_id_to_index[dest])
+        
+        # Convert to jraph
+        graph = jraph.GraphsTuple(
+                                  n_node=np.array([len(nodes)]),
+                                  n_edge=np.array([len(edges)]),
+                                  nodes=np.array(nodes), 
+                                  edges=np.array(edges), 
+                                  senders=np.array(senders), 
+                                  receivers=np.array(receivers), 
+                                  globals=np.array([1]),
+                                )
+        target = [1]
+        dataset.append({"input_graph": graph, "target": target})
+    print(f"Length of dataset for {vuln}: ", len(dataset))
+    with open(f"./dataset/{vuln}_fixed.pkl", "wb") as f:
+        pickle.dump(dataset, f)
 
 
 def get_numpy_dataset():
@@ -204,16 +248,31 @@ def get_numpy_dataset():
 
 if __name__=="__main__":
     # get_adj_dict(0)
-    vuln_list = ["reentrancy", "timestamp"]
-    for vuln in vuln_list:
-        make_jraph_dataset(vuln)
+    vuln_list = ["delegatecall", "integeroverflow", "reentrancy", "timestamp"]
+    # for vuln in vuln_list:
+    #     make_jraph_dataset(vuln)
+
+    vuln = "timestamp"
+    re_pack_dataset(vuln,[109, 123])
 
     model_id = "text-embedding-ada-002"
 
-    with open("./dataset/reentrancy.pkl", "rb") as f:
-        dataset = pickle.load(f)
+    
 
-    print(dataset[0])
+    with open(f"./dataset/{vuln}.pkl", "rb") as f:
+        dataset = pickle.load(f)
+    
+    with open(f"./dataset/{vuln}_fixed.pkl", "rb") as f:
+        additional = pickle.load(f)
+
+    for g in additional:
+        dataset.append(g)
+
+    with open(f"./dataset/{vuln}_fixed.pkl", "wb") as f:
+        pickle.dump(dataset, f)
+
+    print(len(dataset))
+
     # compute the embedding of the text
     # text = "This is a block of EVM bytecode:  d: PUSH1 0x0 f: CALLDATALOAD  10: PUSH29 0x100000000000000000000000000000000000000000000000000000000 2e: SWAP1  2f: DIV  30: PUSH4 0xffffffff 35: AND  36: DUP1  37: PUSH4 0x19165587 3c: EQ  3d: PUSH2 0x5c 40: JUMPI"
     # emb = openai.Embedding.create(input=[text], model=model_id)['data'][0]['embedding']
