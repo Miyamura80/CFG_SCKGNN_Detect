@@ -22,10 +22,8 @@ def bytecode_to_cfg(vuln):
 
         # create the CFG
         cfg = EthereumCFG(bytecode_hex)
-
-        # generic visualization api
-        # graph = CFGGraph(cfg)
-        # graph.view()
+        graph = CFGGraph(cfg)
+        graph.view()
 
         print(file_name + " is done!")
 
